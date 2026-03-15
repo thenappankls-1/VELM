@@ -4,156 +4,155 @@ import path from "path";
 const dbPath = path.join(process.cwd(), "velm-poc.db");
 export const db = new Database(dbPath);
 
-export type Requirement = {
-  id: string;
-  title: string;
-  description: string;
-  safety_relevant: number;
-};
-
-export type TestCase = {
-  id: string;
-  title: string;
-  requirement_id: string;
-};
-
-export type TestResult = {
-  id: string;
-  test_case_id: string;
-  status: "pass" | "fail" | "not_run";
-};
-
-export type TraceLinkRow = {
-  requirement_id: string;
-  test_case_id: string;
-  test_result_id: string | null;
-};
+// Chain: Vehicle → Function → ECU → Software Requirement → Validation Case → Result
 
 function initSchema() {
+  // Drop old tables so new schema applies (one-time; existing data in old shape is replaced by seed)
   db.exec(`
+    DROP TABLE IF EXISTS trace_links;
+    DROP TABLE IF EXISTS test_results;
+    DROP TABLE IF EXISTS test_cases;
+    DROP TABLE IF EXISTS validation_results;
+    DROP TABLE IF EXISTS validation_cases;
+    DROP TABLE IF EXISTS requirements;
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vehicles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT
+    );
+    CREATE TABLE IF NOT EXISTS functions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      vehicle_id TEXT,
+      FOREIGN KEY (vehicle_id) REFERENCES vehicles(id)
+    );
+    CREATE TABLE IF NOT EXISTS ecus (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      function_id TEXT NOT NULL,
+      FOREIGN KEY (function_id) REFERENCES functions(id)
+    );
     CREATE TABLE IF NOT EXISTS requirements (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT,
-      safety_relevant INTEGER NOT NULL DEFAULT 0
+      safety_relevant INTEGER NOT NULL DEFAULT 0,
+      ecu_id TEXT NOT NULL,
+      FOREIGN KEY (ecu_id) REFERENCES ecus(id)
     );
-    CREATE TABLE IF NOT EXISTS test_cases (
+    CREATE TABLE IF NOT EXISTS validation_cases (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       requirement_id TEXT NOT NULL,
       FOREIGN KEY (requirement_id) REFERENCES requirements(id)
     );
-    CREATE TABLE IF NOT EXISTS test_results (
+    CREATE TABLE IF NOT EXISTS validation_results (
       id TEXT PRIMARY KEY,
-      test_case_id TEXT NOT NULL,
+      validation_case_id TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('pass','fail','not_run')),
-      FOREIGN KEY (test_case_id) REFERENCES test_cases(id)
+      FOREIGN KEY (validation_case_id) REFERENCES validation_cases(id)
     );
-    CREATE TABLE IF NOT EXISTS trace_links (
-      requirement_id TEXT NOT NULL,
-      test_case_id TEXT NOT NULL,
-      test_result_id TEXT,
-      PRIMARY KEY (requirement_id, test_case_id),
-      FOREIGN KEY (requirement_id) REFERENCES requirements(id),
-      FOREIGN KEY (test_case_id) REFERENCES test_cases(id),
-      FOREIGN KEY (test_result_id) REFERENCES test_results(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_trace_requirement ON trace_links(requirement_id);
-    CREATE INDEX IF NOT EXISTS idx_trace_test_case ON trace_links(test_case_id);
+    CREATE INDEX IF NOT EXISTS idx_req_ecu ON requirements(ecu_id);
+    CREATE INDEX IF NOT EXISTS idx_vc_req ON validation_cases(requirement_id);
+    CREATE INDEX IF NOT EXISTS idx_vr_vc ON validation_results(validation_case_id);
   `);
 }
 
 function seedIfEmpty() {
-  const count = db.prepare("SELECT COUNT(*) as n FROM requirements").get() as { n: number };
-  if (count.n > 0) return;
+  const vehicleCount = db.prepare("SELECT COUNT(*) as n FROM vehicles").get() as { n: number };
+  const requirementCount = db.prepare("SELECT COUNT(*) as n FROM requirements").get() as { n: number };
+  const seedVehicles = vehicleCount.n === 0;
+  const seedRequirements = requirementCount.n === 0;
+  if (!seedVehicles && !seedRequirements) return;
 
-  const insertReq = db.prepare(
-    "INSERT INTO requirements (id, title, description, safety_relevant) VALUES (?, ?, ?, ?)"
-  );
-  const insertTc = db.prepare(
-    "INSERT INTO test_cases (id, title, requirement_id) VALUES (?, ?, ?)"
-  );
-  const insertTr = db.prepare(
-    "INSERT INTO test_results (id, test_case_id, status) VALUES (?, ?, ?)"
-  );
-  const insertLink = db.prepare(
-    "INSERT INTO trace_links (requirement_id, test_case_id, test_result_id) VALUES (?, ?, ?)"
-  );
+  const insV = db.prepare("INSERT INTO vehicles (id, name, description) VALUES (?, ?, ?)");
+  const insF = db.prepare("INSERT INTO functions (id, name, description, vehicle_id) VALUES (?, ?, ?, ?)");
+  const insE = db.prepare("INSERT INTO ecus (id, name, function_id) VALUES (?, ?, ?)");
+  const insR = db.prepare("INSERT INTO requirements (id, title, description, safety_relevant, ecu_id) VALUES (?, ?, ?, ?, ?)");
+  const insVC = db.prepare("INSERT INTO validation_cases (id, title, requirement_id) VALUES (?, ?, ?)");
+  const insVR = db.prepare("INSERT INTO validation_results (id, validation_case_id, status) VALUES (?, ?, ?)");
 
-  // 10 requirements: mix safety (1) and non-safety (0)
-  const reqs: Array<[string, string, string, number]> = [
-    ["REQ-001", "Brake system shall stop vehicle within X meters", "High-level braking performance.", 1],
-    ["REQ-002", "System shall log diagnostic trouble codes", "DTC logging for critical failures.", 1],
-    ["REQ-003", "Steering assist shall meet response time budget", "EPS performance.", 1],
-    ["REQ-004", "HMI shall display warning within 200 ms", "Display latency.", 1],
-    ["REQ-005", "OTA updates shall be signed and verified", "Security.", 1],
-    ["REQ-006", "User manual shall be available in PDF", "Documentation.", 0],
-    ["REQ-007", "Config tool shall export calibration to CSV", "Tooling.", 0],
-    ["REQ-008", "ECU shall support sleep/wake on CAN", "Power management.", 1],
-    ["REQ-009", "Logs shall be retained for 30 days", "Diagnostics.", 0],
-    ["REQ-010", "Sensor fusion shall output confidence score", "ADAS input.", 1],
+  if (seedVehicles) {
+    insV.run("VH-001", "Platform A Sedan", "Main passenger car platform");
+    insV.run("VH-002", "Platform B SUV", "SUV platform");
+  }
+
+  if (seedVehicles) {
+  insF.run("FUN-001", "Braking", "Brake system function", "VH-001");
+  insF.run("FUN-002", "Diagnostics", "DTC and logging", "VH-001");
+  insF.run("FUN-003", "Steering", "EPS and steering assist", "VH-001");
+  insF.run("FUN-004", "HMI", "Display and warnings", null);
+  }
+
+  if (seedVehicles) {
+  insE.run("ECU-BRK", "Brake ECU", "FUN-001");
+  insE.run("ECU-DIAG", "Diagnostics ECU", "FUN-002");
+  insE.run("ECU-EPS", "Steering ECU", "FUN-003");
+  insE.run("ECU-HMI", "HMI ECU", "FUN-004");
+  insE.run("ECU-GW", "Gateway ECU", "FUN-002");
+  }
+
+  if (seedRequirements) {
+  const reqs: Array<[string, string, string, number, string]> = [
+    ["REQ-001", "Brake system shall stop vehicle within X meters", "High-level braking performance.", 1, "ECU-BRK"],
+    ["REQ-002", "System shall log diagnostic trouble codes", "DTC logging for critical failures.", 1, "ECU-DIAG"],
+    ["REQ-003", "Steering assist shall meet response time budget", "EPS performance.", 1, "ECU-EPS"],
+    ["REQ-004", "HMI shall display warning within 200 ms", "Display latency.", 1, "ECU-HMI"],
+    ["REQ-005", "OTA updates shall be signed and verified", "Security.", 1, "ECU-GW"],
+    ["REQ-006", "User manual shall be available in PDF", "Documentation.", 0, "ECU-HMI"],
+    ["REQ-007", "Config tool shall export calibration to CSV", "Tooling.", 0, "ECU-DIAG"],
+    ["REQ-008", "ECU shall support sleep/wake on CAN", "Power management.", 1, "ECU-GW"],
+    ["REQ-009", "Logs shall be retained for 30 days", "Diagnostics.", 0, "ECU-DIAG"],
+    ["REQ-010", "Sensor fusion shall output confidence score", "ADAS input.", 1, "ECU-EPS"],
   ];
-  reqs.forEach(([id, title, desc, safety]) => insertReq.run(id, title, desc, safety));
+  reqs.forEach(([id, title, desc, safety, ecuId]) => insR.run(id, title, desc, safety, ecuId));
+  }
 
-  // 15 test cases linked to requirements (spread across REQ-001..REQ-010)
-  const tcs: Array<[string, string, string]> = [
-    ["TC-001", "Emergency braking from 100 km/h", "REQ-001"],
-    ["TC-002", "Brake fade after 10 cycles", "REQ-001"],
-    ["TC-003", "DTC logging on sensor failure", "REQ-002"],
-    ["TC-004", "DTC clear on repair", "REQ-002"],
-    ["TC-005", "Steering torque response 50 ms", "REQ-003"],
-    ["TC-006", "HMI warning display latency", "REQ-004"],
-    ["TC-007", "OTA signature verification", "REQ-005"],
-    ["TC-008", "OTA rollback on failure", "REQ-005"],
-    ["TC-009", "PDF manual download", "REQ-006"],
-    ["TC-010", "Config export CSV format", "REQ-007"],
-    ["TC-011", "CAN sleep entry and wake", "REQ-008"],
-    ["TC-012", "Log retention 30 days", "REQ-009"],
-    ["TC-013", "Fusion confidence 0–1 range", "REQ-010"],
-    ["TC-014", "Steering assist at low speed", "REQ-003"],
-    ["TC-015", "Multiple DTCs ordering", "REQ-002"],
+  if (seedRequirements) {
+  const vcs: Array<[string, string, string]> = [
+    ["VC-001", "Emergency braking from 100 km/h", "REQ-001"],
+    ["VC-002", "Brake fade after 10 cycles", "REQ-001"],
+    ["VC-003", "DTC logging on sensor failure", "REQ-002"],
+    ["VC-004", "DTC clear on repair", "REQ-002"],
+    ["VC-005", "Steering torque response 50 ms", "REQ-003"],
+    ["VC-006", "HMI warning display latency", "REQ-004"],
+    ["VC-007", "OTA signature verification", "REQ-005"],
+    ["VC-008", "OTA rollback on failure", "REQ-005"],
+    ["VC-009", "PDF manual download", "REQ-006"],
+    ["VC-010", "Config export CSV format", "REQ-007"],
+    ["VC-011", "CAN sleep entry and wake", "REQ-008"],
+    ["VC-012", "Log retention 30 days", "REQ-009"],
+    ["VC-013", "Fusion confidence 0–1 range", "REQ-010"],
+    ["VC-014", "Steering assist at low speed", "REQ-003"],
+    ["VC-015", "Multiple DTCs ordering", "REQ-002"],
   ];
-  tcs.forEach(([id, title, rid]) => insertTc.run(id, title, rid));
+  vcs.forEach(([id, title, rid]) => insVC.run(id, title, rid));
+  }
 
-  // Test results and trace links (subset for demo)
-  const results: Array<[string, string, string]> = [
-    ["TR-001", "TC-001", "pass"],
-    ["TR-002", "TC-002", "pass"],
-    ["TR-003", "TC-003", "pass"],
-    ["TR-004", "TC-004", "not_run"],
-    ["TR-005", "TC-005", "pass"],
-    ["TR-006", "TC-006", "fail"],
-    ["TR-007", "TC-007", "pass"],
-    ["TR-008", "TC-008", "not_run"],
-    ["TR-009", "TC-009", "pass"],
-    ["TR-010", "TC-010", "pass"],
-    ["TR-011", "TC-011", "pass"],
-    ["TR-012", "TC-012", "pass"],
-    ["TR-013", "TC-013", "pass"],
-    ["TR-014", "TC-014", "not_run"],
-    ["TR-015", "TC-015", "pass"],
+  if (seedRequirements) {
+  const vrs: Array<[string, string, string]> = [
+    ["VR-001", "VC-001", "pass"],
+    ["VR-002", "VC-002", "pass"],
+    ["VR-003", "VC-003", "pass"],
+    ["VR-004", "VC-004", "not_run"],
+    ["VR-005", "VC-005", "pass"],
+    ["VR-006", "VC-006", "fail"],
+    ["VR-007", "VC-007", "pass"],
+    ["VR-008", "VC-008", "not_run"],
+    ["VR-009", "VC-009", "pass"],
+    ["VR-010", "VC-010", "pass"],
+    ["VR-011", "VC-011", "pass"],
+    ["VR-012", "VC-012", "pass"],
+    ["VR-013", "VC-013", "pass"],
+    ["VR-014", "VC-014", "not_run"],
+    ["VR-015", "VC-015", "pass"],
   ];
-  results.forEach(([id, tcid, status]) => insertTr.run(id, tcid, status));
-
-  // Trace links: requirement <-> test case <-> result
-  const links: Array<[string, string, string | null]> = [
-    ["REQ-001", "TC-001", "TR-001"],
-    ["REQ-001", "TC-002", "TR-002"],
-    ["REQ-002", "TC-003", "TR-003"],
-    ["REQ-002", "TC-004", "TR-004"],
-    ["REQ-002", "TC-015", "TR-015"],
-    ["REQ-003", "TC-005", "TR-005"],
-    ["REQ-003", "TC-014", "TR-014"],
-    ["REQ-004", "TC-006", "TR-006"],
-    ["REQ-005", "TC-007", "TR-007"],
-    ["REQ-005", "TC-008", "TR-008"],
-    ["REQ-006", "TC-009", "TR-009"],
-    ["REQ-007", "TC-010", "TR-010"],
-    ["REQ-008", "TC-011", "TR-011"],
-    ["REQ-009", "TC-012", "TR-012"],
-    ["REQ-010", "TC-013", "TR-013"],
-  ];
-  links.forEach(([rid, tcid, trid]) => insertLink.run(rid, tcid, trid));
+  vrs.forEach(([id, vcid, status]) => insVR.run(id, vcid, status));
+  }
 }
 
 export function initDb() {
@@ -161,166 +160,194 @@ export function initDb() {
   seedIfEmpty();
 }
 
-// API-shaped row types
-export type RequirementRow = { id: string; title: string; description: string; safetyRelevant: number };
-export type TestCaseRow = { id: string; title: string; requirementId: string };
-export type TestResultRow = { id: string; testCaseId: string; status: string };
+// API row types
+export type VehicleRow = { id: string; name: string; description: string | null };
+export type FunctionRow = { id: string; name: string; description: string | null; vehicleId: string | null };
+export type EcuRow = { id: string; name: string; functionId: string };
+export type RequirementRow = { id: string; title: string; description: string; safetyRelevant: number; ecuId: string };
+export type ValidationCaseRow = { id: string; title: string; requirementId: string };
+export type ValidationResultRow = { id: string; validationCaseId: string; status: string };
+
+export function getVehicles(): VehicleRow[] {
+  return db.prepare("SELECT id, name, description FROM vehicles").all() as VehicleRow[];
+}
+
+export function getFunctions(): FunctionRow[] {
+  return db.prepare("SELECT id, name, description, vehicle_id AS vehicleId FROM functions").all() as FunctionRow[];
+}
+
+export function getEcus(): EcuRow[] {
+  return db.prepare("SELECT id, name, function_id AS functionId FROM ecus").all() as EcuRow[];
+}
 
 export function getRequirements(): RequirementRow[] {
-  const rows = db.prepare("SELECT id, title, description, safety_relevant AS safetyRelevant FROM requirements").all() as RequirementRow[];
-  return rows;
+  return db.prepare("SELECT id, title, description, safety_relevant AS safetyRelevant, ecu_id AS ecuId FROM requirements").all() as RequirementRow[];
 }
 
-export function getTestCases(): TestCaseRow[] {
-  const rows = db.prepare("SELECT id, title, requirement_id AS requirementId FROM test_cases").all() as TestCaseRow[];
-  return rows;
+export function getValidationCases(): ValidationCaseRow[] {
+  return db.prepare("SELECT id, title, requirement_id AS requirementId FROM validation_cases").all() as ValidationCaseRow[];
 }
 
-export function getTestResults(): TestResultRow[] {
-  const rows = db.prepare("SELECT id, test_case_id AS testCaseId, status FROM test_results").all() as TestResultRow[];
-  return rows;
+export function getValidationResults(): ValidationResultRow[] {
+  return db.prepare("SELECT id, validation_case_id AS validationCaseId, status FROM validation_results").all() as ValidationResultRow[];
 }
 
-export function getTraceLinks(): Array<{
+// Trace: Requirement → Validation Case → Result (derived from FKs)
+export function getTrace(): Array<{
   requirementId: string;
-  testCaseId: string;
-  testResultId: string | null;
+  validationCaseId: string;
+  validationResultId: string | null;
   requirement: RequirementRow | null;
-  testCase: TestCaseRow | null;
-  testResult: TestResultRow | null;
+  validationCase: ValidationCaseRow | null;
+  validationResult: ValidationResultRow | null;
 }> {
-  const links = db.prepare(
-    "SELECT requirement_id AS requirementId, test_case_id AS testCaseId, test_result_id AS testResultId FROM trace_links"
-  ).all() as Array<{ requirementId: string; testCaseId: string; testResultId: string | null }>;
+  const rows = db.prepare(`
+    SELECT r.id AS requirementId, vc.id AS validationCaseId, vr.id AS validationResultId
+    FROM requirements r
+    JOIN validation_cases vc ON vc.requirement_id = r.id
+    LEFT JOIN validation_results vr ON vr.validation_case_id = vc.id
+  `).all() as Array<{ requirementId: string; validationCaseId: string; validationResultId: string | null }>;
 
   const reqMap = new Map(getRequirements().map((r) => [r.id, r]));
-  const tcMap = new Map(getTestCases().map((t) => [t.id, t]));
-  const trMap = new Map(getTestResults().map((r) => [r.id, r]));
+  const vcMap = new Map(getValidationCases().map((v) => [v.id, v]));
+  const vrMap = new Map(getValidationResults().map((r) => [r.id, r]));
 
-  return links.map((link) => ({
-    ...link,
-    requirement: reqMap.get(link.requirementId) ?? null,
-    testCase: tcMap.get(link.testCaseId) ?? null,
-    testResult: link.testResultId ? (trMap.get(link.testResultId) ?? null) : null,
+  return rows.map((row) => ({
+    ...row,
+    requirement: reqMap.get(row.requirementId) ?? null,
+    validationCase: vcMap.get(row.validationCaseId) ?? null,
+    validationResult: row.validationResultId ? (vrMap.get(row.validationResultId) ?? null) : null,
   }));
 }
 
 export function getImpactByRequirementId(requirementId: string): {
   requirement: RequirementRow | null;
-  affectedTestCases: TestCaseRow[];
-  affectedTestResults: TestResultRow[];
-  traceLinks: Array<{ testCaseId: string; testResultId: string | null }>;
+  affectedValidationCases: ValidationCaseRow[];
+  affectedValidationResults: ValidationResultRow[];
 } {
-  const requirement = db.prepare("SELECT id, title, description, safety_relevant AS safetyRelevant FROM requirements WHERE id = ?").get(requirementId) as RequirementRow | undefined;
-  const links = db.prepare(
-    "SELECT test_case_id AS testCaseId, test_result_id AS testResultId FROM trace_links WHERE requirement_id = ?"
-  ).all(requirementId) as Array<{ testCaseId: string; testResultId: string | null }>;
-
-  const tcIds = [...new Set(links.map((l) => l.testCaseId))];
-  const trIds = links.map((l) => l.testResultId).filter((id): id is string => id != null);
-
-  const placeholdersTc = tcIds.map(() => "?").join(",");
-  const placeholdersTr = trIds.length ? trIds.map(() => "?").join(",") : "";
-  const affectedTestCases = tcIds.length
-    ? (db.prepare(`SELECT id, title, requirement_id AS requirementId FROM test_cases WHERE id IN (${placeholdersTc})`).all(...tcIds) as TestCaseRow[])
+  const requirement = db.prepare("SELECT id, title, description, safety_relevant AS safetyRelevant, ecu_id AS ecuId FROM requirements WHERE id = ?").get(requirementId) as RequirementRow | undefined;
+  const vcs = db.prepare("SELECT id, title, requirement_id AS requirementId FROM validation_cases WHERE requirement_id = ?").all(requirementId) as ValidationCaseRow[];
+  const vcIds = vcs.map((v) => v.id);
+  const vrs: ValidationResultRow[] = vcIds.length
+    ? (db.prepare(`SELECT id, validation_case_id AS validationCaseId, status FROM validation_results WHERE validation_case_id IN (${vcIds.map(() => "?").join(",")})`).all(...vcIds) as ValidationResultRow[])
     : [];
-  const affectedTestResults = trIds.length
-    ? (db.prepare(`SELECT id, test_case_id AS testCaseId, status FROM test_results WHERE id IN (${placeholdersTr})`).all(...trIds) as TestResultRow[])
-    : [];
-
   return {
     requirement: requirement ?? null,
-    affectedTestCases,
-    affectedTestResults,
-    traceLinks: links,
+    affectedValidationCases: vcs,
+    affectedValidationResults: vrs,
   };
 }
 
-export function createRequirement(data: { id: string; title: string; description?: string; safetyRelevant?: boolean }): RequirementRow {
-  const desc = data.description ?? "";
-  const safety = data.safetyRelevant ? 1 : 0;
-  db.prepare("INSERT INTO requirements (id, title, description, safety_relevant) VALUES (?, ?, ?, ?)").run(data.id.trim(), data.title.trim(), desc, safety);
-  return db.prepare("SELECT id, title, description, safety_relevant AS safetyRelevant FROM requirements WHERE id = ?").get(data.id.trim()) as RequirementRow;
-}
-
-export function createTestCase(data: { id: string; title: string; requirementId: string }): TestCaseRow {
-  const id = data.id.trim();
-  const requirementId = data.requirementId.trim();
-  db.prepare("INSERT INTO test_cases (id, title, requirement_id) VALUES (?, ?, ?)").run(id, data.title.trim(), requirementId);
-  db.prepare("INSERT OR IGNORE INTO trace_links (requirement_id, test_case_id, test_result_id) VALUES (?, ?, ?)").run(requirementId, id, null);
-  return db.prepare("SELECT id, title, requirement_id AS requirementId FROM test_cases WHERE id = ?").get(id) as TestCaseRow;
-}
-
-export function createTestResult(data: { id: string; testCaseId: string; status: "pass" | "fail" | "not_run" }): TestResultRow {
-  const id = data.id.trim();
-  const testCaseId = data.testCaseId.trim();
-  db.prepare("INSERT INTO test_results (id, test_case_id, status) VALUES (?, ?, ?)").run(id, testCaseId, data.status);
-  db.prepare("UPDATE trace_links SET test_result_id = ? WHERE test_case_id = ?").run(id, testCaseId);
-  return db.prepare("SELECT id, test_case_id AS testCaseId, status FROM test_results WHERE id = ?").get(id) as TestResultRow;
-}
-
 export function getCoverage(): {
-  requirementCoverage: Array<{ requirementId: string; title: string; safetyRelevant: number; testCaseIds: string[]; testCount: number; passedCount: number }>;
-  testCaseCoverage: Array<{ testCaseId: string; title: string; requirementId: string; requirementTitle: string }>;
-  summary: { totalRequirements: number; coveredRequirements: number; totalTestCases: number; linkedTestCases: number; requirementCoveragePct: number; testCaseCoveragePct: number };
+  requirementCoverage: Array<{ requirementId: string; title: string; safetyRelevant: number; ecuId: string; validationCaseIds: string[]; testCount: number; passedCount: number }>;
+  validationCaseCoverage: Array<{ validationCaseId: string; title: string; requirementId: string; requirementTitle: string }>;
+  summary: { totalRequirements: number; coveredRequirements: number; totalValidationCases: number; linkedValidationCases: number; requirementCoveragePct: number; validationCaseCoveragePct: number };
 } {
   const requirements = getRequirements();
-  const testCases = getTestCases();
-  const links = db.prepare(
-    "SELECT requirement_id AS requirementId, test_case_id AS testCaseId, test_result_id AS testResultId FROM trace_links"
-  ).all() as Array<{ requirementId: string; testCaseId: string; testResultId: string | null }>;
-  const results = db.prepare("SELECT id, test_case_id AS testCaseId, status FROM test_results").all() as Array<{ id: string; testCaseId: string; status: string }>;
-  const passByTrId = new Map(results.filter((r) => r.status === "pass").map((r) => [r.id, true]));
+  const vcs = getValidationCases();
+  const vrs = getValidationResults();
+  const passSet = new Set(vrs.filter((r) => r.status === "pass").map((r) => r.id));
 
-  const reqToTcs = new Map<string, string[]>();
-  const tcToReq = new Map<string, { requirementId: string; requirementTitle: string }>();
-  for (const link of links) {
-    if (!reqToTcs.has(link.requirementId)) reqToTcs.set(link.requirementId, []);
-    if (!reqToTcs.get(link.requirementId)!.includes(link.testCaseId)) reqToTcs.get(link.requirementId)!.push(link.testCaseId);
-    const req = requirements.find((r) => r.id === link.requirementId);
-    tcToReq.set(link.testCaseId, { requirementId: link.requirementId, requirementTitle: req?.title ?? link.requirementId });
+  const reqToVcs = new Map<string, string[]>();
+  for (const vc of vcs) {
+    if (!reqToVcs.has(vc.requirementId)) reqToVcs.set(vc.requirementId, []);
+    reqToVcs.get(vc.requirementId)!.push(vc.id);
+  }
+
+  const vcToReq = new Map<string, { requirementId: string; requirementTitle: string }>();
+  const reqMap = new Map(requirements.map((r) => [r.id, r]));
+  for (const vc of vcs) {
+    const req = reqMap.get(vc.requirementId);
+    vcToReq.set(vc.id, { requirementId: vc.requirementId, requirementTitle: req?.title ?? vc.requirementId });
+  }
+
+  const vcToResultIds = new Map<string, string[]>();
+  for (const vr of vrs) {
+    if (!vcToResultIds.has(vr.validationCaseId)) vcToResultIds.set(vr.validationCaseId, []);
+    vcToResultIds.get(vr.validationCaseId)!.push(vr.id);
   }
 
   const requirementCoverage = requirements.map((r) => {
-    const testCaseIds = reqToTcs.get(r.id) ?? [];
-    const passedCount = links
-      .filter((l) => l.requirementId === r.id && l.testResultId && passByTrId.has(l.testResultId))
-      .length;
+    const validationCaseIds = reqToVcs.get(r.id) ?? [];
+    let passedCount = 0;
+    for (const vcid of validationCaseIds) {
+      const resultIds = vcToResultIds.get(vcid) ?? [];
+      if (resultIds.some((id) => passSet.has(id))) passedCount += 1;
+    }
     return {
       requirementId: r.id,
       title: r.title,
       safetyRelevant: r.safetyRelevant,
-      testCaseIds,
-      testCount: testCaseIds.length,
+      ecuId: r.ecuId,
+      validationCaseIds,
+      testCount: validationCaseIds.length,
       passedCount,
     };
   });
 
-  const testCaseCoverage = testCases.map((t) => {
-    const link = tcToReq.get(t.id);
+  const validationCaseCoverage = vcs.map((vc) => {
+    const link = vcToReq.get(vc.id);
     return {
-      testCaseId: t.id,
-      title: t.title,
+      validationCaseId: vc.id,
+      title: vc.title,
       requirementId: link?.requirementId ?? "",
       requirementTitle: link?.requirementTitle ?? "—",
     };
   });
 
   const coveredRequirements = requirementCoverage.filter((r) => r.testCount > 0).length;
-  const linkedTestCases = testCaseCoverage.filter((t) => t.requirementId).length;
+  const linkedValidationCases = validationCaseCoverage.filter((v) => v.requirementId).length;
   const totalRequirements = requirements.length;
-  const totalTestCases = testCases.length;
+  const totalValidationCases = vcs.length;
 
   return {
     requirementCoverage,
-    testCaseCoverage,
+    validationCaseCoverage,
     summary: {
       totalRequirements,
       coveredRequirements,
-      totalTestCases,
-      linkedTestCases,
+      totalValidationCases,
+      linkedValidationCases,
       requirementCoveragePct: totalRequirements ? Math.round((coveredRequirements / totalRequirements) * 100) : 0,
-      testCaseCoveragePct: totalTestCases ? Math.round((linkedTestCases / totalTestCases) * 100) : 0,
+      validationCaseCoveragePct: totalValidationCases ? Math.round((linkedValidationCases / totalValidationCases) * 100) : 0,
     },
   };
+}
+
+// Create functions
+export function createVehicle(data: { id: string; name: string; description?: string }): VehicleRow {
+  const id = data.id.trim();
+  db.prepare("INSERT INTO vehicles (id, name, description) VALUES (?, ?, ?)").run(id, data.name.trim(), data.description?.trim() ?? null);
+  return db.prepare("SELECT id, name, description FROM vehicles WHERE id = ?").get(id) as VehicleRow;
+}
+
+export function createFunction(data: { id: string; name: string; description?: string; vehicleId?: string }): FunctionRow {
+  const id = data.id.trim();
+  db.prepare("INSERT INTO functions (id, name, description, vehicle_id) VALUES (?, ?, ?, ?)").run(id, data.name.trim(), data.description?.trim() ?? null, data.vehicleId?.trim() || null);
+  return db.prepare("SELECT id, name, description, vehicle_id AS vehicleId FROM functions WHERE id = ?").get(id) as FunctionRow;
+}
+
+export function createEcu(data: { id: string; name: string; functionId: string }): EcuRow {
+  const id = data.id.trim();
+  db.prepare("INSERT INTO ecus (id, name, function_id) VALUES (?, ?, ?)").run(id, data.name.trim(), data.functionId.trim());
+  return db.prepare("SELECT id, name, function_id AS functionId FROM ecus WHERE id = ?").get(id) as EcuRow;
+}
+
+export function createRequirement(data: { id: string; title: string; description?: string; safetyRelevant?: boolean; ecuId: string }): RequirementRow {
+  const id = data.id.trim();
+  const safety = data.safetyRelevant ? 1 : 0;
+  db.prepare("INSERT INTO requirements (id, title, description, safety_relevant, ecu_id) VALUES (?, ?, ?, ?, ?)").run(id, data.title.trim(), data.description?.trim() ?? "", safety, data.ecuId.trim());
+  return db.prepare("SELECT id, title, description, safety_relevant AS safetyRelevant, ecu_id AS ecuId FROM requirements WHERE id = ?").get(id) as RequirementRow;
+}
+
+export function createValidationCase(data: { id: string; title: string; requirementId: string }): ValidationCaseRow {
+  const id = data.id.trim();
+  db.prepare("INSERT INTO validation_cases (id, title, requirement_id) VALUES (?, ?, ?)").run(id, data.title.trim(), data.requirementId.trim());
+  return db.prepare("SELECT id, title, requirement_id AS requirementId FROM validation_cases WHERE id = ?").get(id) as ValidationCaseRow;
+}
+
+export function createValidationResult(data: { id: string; validationCaseId: string; status: "pass" | "fail" | "not_run" }): ValidationResultRow {
+  const id = data.id.trim();
+  db.prepare("INSERT INTO validation_results (id, validation_case_id, status) VALUES (?, ?, ?)").run(id, data.validationCaseId.trim(), data.status);
+  return db.prepare("SELECT id, validation_case_id AS validationCaseId, status FROM validation_results WHERE id = ?").get(id) as ValidationResultRow;
 }

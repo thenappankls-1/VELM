@@ -1,4 +1,14 @@
-import type { Requirement, TestCase, TestResult, TraceLink, ImpactResponse, CoverageResponse } from './types'
+import type {
+  Vehicle,
+  Function,
+  Ecu,
+  Requirement,
+  ValidationCase,
+  ValidationResult,
+  TraceLink,
+  ImpactResponse,
+  CoverageResponse,
+} from './types'
 
 const base = '/api'
 
@@ -22,16 +32,25 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  getVehicles: () => get<Vehicle[]>(`/vehicles`),
+  getFunctions: () => get<Function[]>(`/functions`),
+  getEcus: () => get<Ecu[]>(`/ecus`),
   getRequirements: () => get<Requirement[]>(`/requirements`),
-  getTestCases: () => get<TestCase[]>(`/test-cases`),
-  getTestResults: () => get<TestResult[]>(`/test-results`),
+  getValidationCases: () => get<ValidationCase[]>(`/validation-cases`),
+  getValidationResults: () => get<ValidationResult[]>(`/validation-results`),
   getTrace: () => get<TraceLink[]>(`/trace`),
   getImpact: (requirementId: string) => get<ImpactResponse>(`/impact/${encodeURIComponent(requirementId)}`),
   getCoverage: () => get<CoverageResponse>(`/coverage`),
-  createRequirement: (body: { id: string; title: string; description?: string; safetyRelevant?: boolean }) =>
+  createVehicle: (body: { id: string; name: string; description?: string }) =>
+    post<Vehicle>(`/vehicles`, body),
+  createFunction: (body: { id: string; name: string; description?: string; vehicleId?: string }) =>
+    post<Function>(`/functions`, body),
+  createEcu: (body: { id: string; name: string; functionId: string }) =>
+    post<Ecu>(`/ecus`, body),
+  createRequirement: (body: { id: string; title: string; description?: string; safetyRelevant?: boolean; ecuId: string }) =>
     post<Requirement>(`/requirements`, body),
-  createTestCase: (body: { id: string; title: string; requirementId: string }) =>
-    post<TestCase>(`/test-cases`, body),
-  createTestResult: (body: { id: string; testCaseId: string; status: 'pass' | 'fail' | 'not_run' }) =>
-    post<TestResult>(`/test-results`, body),
+  createValidationCase: (body: { id: string; title: string; requirementId: string }) =>
+    post<ValidationCase>(`/validation-cases`, body),
+  createValidationResult: (body: { id: string; validationCaseId: string; status: 'pass' | 'fail' | 'not_run' }) =>
+    post<ValidationResult>(`/validation-results`, body),
 }

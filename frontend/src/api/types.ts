@@ -1,36 +1,57 @@
+// Chain: Vehicle → Function → ECU → Software Requirement → Validation Case → Result
+
+export interface Vehicle {
+  id: string
+  name: string
+  description: string | null
+}
+
+export interface Function {
+  id: string
+  name: string
+  description: string | null
+  vehicleId: string | null
+}
+
+export interface Ecu {
+  id: string
+  name: string
+  functionId: string
+}
+
 export interface Requirement {
   id: string
   title: string
   description: string
-  safetyRelevant: boolean
+  safetyRelevant: boolean | number
+  ecuId: string
 }
 
-export interface TestCase {
+export interface ValidationCase {
   id: string
   title: string
   requirementId: string
 }
 
-export interface TestResult {
+export interface ValidationResult {
   id: string
-  testCaseId: string
+  validationCaseId: string
   status: 'pass' | 'fail' | 'not_run'
 }
 
 export interface TraceLink {
   requirementId: string
-  testCaseId: string
-  testResultId?: string
-  requirement?: Requirement
-  testCase?: TestCase
-  testResult?: TestResult
+  validationCaseId: string
+  validationResultId: string | null
+  requirement?: Requirement | null
+  validationCase?: ValidationCase | null
+  validationResult?: ValidationResult | null
 }
 
 export interface ImpactResponse {
-  requirement: { id: string; title: string; description: string; safetyRelevant: number } | null
-  affectedTestCases: TestCase[]
-  affectedTestResults: TestResult[]
-  traceLinks: Array<{ testCaseId: string; testResultId: string | null }>
+  requirement: { id: string; title: string; description: string; safetyRelevant: number; ecuId: string } | null
+  affectedValidationCases: ValidationCase[]
+  affectedValidationResults: ValidationResult[]
 }
 
 export interface CoverageResponse {
@@ -38,12 +59,13 @@ export interface CoverageResponse {
     requirementId: string
     title: string
     safetyRelevant: number
-    testCaseIds: string[]
+    ecuId: string
+    validationCaseIds: string[]
     testCount: number
     passedCount: number
   }>
-  testCaseCoverage: Array<{
-    testCaseId: string
+  validationCaseCoverage: Array<{
+    validationCaseId: string
     title: string
     requirementId: string
     requirementTitle: string
@@ -51,9 +73,9 @@ export interface CoverageResponse {
   summary: {
     totalRequirements: number
     coveredRequirements: number
-    totalTestCases: number
-    linkedTestCases: number
+    totalValidationCases: number
+    linkedValidationCases: number
     requirementCoveragePct: number
-    testCaseCoveragePct: number
+    validationCaseCoveragePct: number
   }
 }

@@ -1,0 +1,12 @@
+{
+  "name": "velm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vehicle Engineering Lifecycle Management POC",
+  "scripts": {
+    "auto-push": "node scripts/auto-push.js"
+  },
+  "devDependencies": {
+    "chokidar": "^3.6.0"
+  }
+}

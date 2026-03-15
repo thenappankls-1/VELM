@@ -73,7 +73,7 @@ function App() {
             <>
               <section className="velm-section">
                 <h2>Impact view</h2>
-                <p className="velm-section-desc">Select a requirement to see affected test cases and results.</p>
+                <p className="velm-section-desc">Select a software requirement to see affected validation cases and results.</p>
                 <div className="impact-select">
                   <label htmlFor="impact-req">Requirement</label>
                   <select
@@ -98,8 +98,8 @@ function App() {
                     ) : (
                       <div className="impact-requirement">Requirement not found.</div>
                     )}
-                    <h3>Affected test cases ({impact.affectedTestCases.length})</h3>
-                    {impact.affectedTestCases.length > 0 ? (
+                    <h3>Affected validation cases ({impact.affectedValidationCases.length})</h3>
+                    {impact.affectedValidationCases.length > 0 ? (
                       <table className="velm-table">
                         <thead>
                           <tr>
@@ -108,51 +108,52 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {impact.affectedTestCases.map((tc) => (
-                            <tr key={tc.id}>
-                              <td><code>{tc.id}</code></td>
-                              <td>{tc.title}</td>
+                          {impact.affectedValidationCases.map((vc) => (
+                            <tr key={vc.id}>
+                              <td><code>{vc.id}</code></td>
+                              <td>{vc.title}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     ) : (
-                      <p className="impact-empty">No test cases linked to this requirement.</p>
+                      <p className="impact-empty">No validation cases linked to this requirement.</p>
                     )}
-                    <h3>Affected test results ({impact.affectedTestResults.length})</h3>
-                    {impact.affectedTestResults.length > 0 ? (
+                    <h3>Affected validation results ({impact.affectedValidationResults.length})</h3>
+                    {impact.affectedValidationResults.length > 0 ? (
                       <table className="velm-table">
                         <thead>
                           <tr>
                             <th>ID</th>
-                            <th>Test case</th>
+                            <th>Validation case</th>
                             <th>Status</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {impact.affectedTestResults.map((tr) => (
-                            <tr key={tr.id}>
-                              <td><code>{tr.id}</code></td>
-                              <td>{tr.testCaseId}</td>
-                              <td><span className={`status status-${tr.status}`}>{tr.status}</span></td>
+                          {impact.affectedValidationResults.map((vr) => (
+                            <tr key={vr.id}>
+                              <td><code>{vr.id}</code></td>
+                              <td>{vr.validationCaseId}</td>
+                              <td><span className={`status status-${vr.status}`}>{vr.status}</span></td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     ) : (
-                      <p className="impact-empty">No test results linked.</p>
+                      <p className="impact-empty">No validation results linked.</p>
                     )}
                   </div>
                 )}
               </section>
 
               <section className="velm-section">
-                <h2>Requirements</h2>
+                <h2>Software requirements</h2>
                 <table className="velm-table">
                   <thead>
                     <tr>
                       <th>ID</th>
                       <th>Title</th>
+                      <th>ECU</th>
                       <th>Safety</th>
                     </tr>
                   </thead>
@@ -161,6 +162,7 @@ function App() {
                       <tr key={r.id}>
                         <td><code>{r.id}</code></td>
                         <td>{r.title}</td>
+                        <td><code>{r.ecuId}</code></td>
                         <td>{r.safetyRelevant ? 'Yes' : 'No'}</td>
                       </tr>
                     ))}
@@ -169,18 +171,18 @@ function App() {
               </section>
 
               <section className="velm-section">
-                <h2>Traceability (Requirement → Test case → Result)</h2>
+                <h2>Traceability (Requirement → Validation case → Result)</h2>
                 <table className="velm-table">
                   <thead>
                     <tr>
-                      <th>Requirement</th>
-                      <th>Test case</th>
+                      <th>Software requirement</th>
+                      <th>Validation case</th>
                       <th>Result</th>
                     </tr>
                   </thead>
                   <tbody>
                     {trace.map((link, i) => (
-                      <tr key={link.requirementId + link.testCaseId + String(i)}>
+                      <tr key={link.requirementId + link.validationCaseId + String(i)}>
                         <td>
                           {link.requirement ? (
                             <><code>{link.requirement.id}</code> {link.requirement.title}</>
@@ -189,15 +191,15 @@ function App() {
                           )}
                         </td>
                         <td>
-                          {link.testCase ? (
-                            <><code>{link.testCase.id}</code> {link.testCase.title}</>
+                          {link.validationCase ? (
+                            <><code>{link.validationCase.id}</code> {link.validationCase.title}</>
                           ) : (
-                            link.testCaseId
+                            link.validationCaseId
                           )}
                         </td>
                         <td>
-                          {link.testResult ? (
-                            <span className={`status status-${link.testResult.status}`}>{link.testResult.status}</span>
+                          {link.validationResult ? (
+                            <span className={`status status-${link.validationResult.status}`}>{link.validationResult.status}</span>
                           ) : (
                             '—'
                           )}
