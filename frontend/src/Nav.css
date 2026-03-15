@@ -1,0 +1,27 @@
+.velm-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.velm-nav-link {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.velm-nav-link:hover {
+  background: var(--code-bg);
+  color: var(--text-h);
+}
+
+.velm-nav-link-active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}

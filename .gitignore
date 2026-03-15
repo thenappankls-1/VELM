@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+*.local
+
+# Database (do not commit - created at runtime)
+*.db
+backend/velm-poc.db
+
+# Logs and env
+*.log
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json

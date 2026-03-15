@@ -1,0 +1,30 @@
+.data-view-loading,
+.data-view-error {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text);
+}
+
+.data-view-error {
+  color: #dc2626;
+}
+
+.data-view-page {
+  padding: 0.5rem 0 2rem;
+}
+
+.data-view-section {
+  margin-bottom: 2rem;
+}
+
+.data-view-section h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+  color: var(--text-h);
+}
+
+.data-view-section .cell-desc {
+  max-width: 280px;
+  font-size: 0.85rem;
+  color: var(--text);
+}

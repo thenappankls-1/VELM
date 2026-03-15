@@ -1,0 +1,4 @@
+node_modules
+dist
+velm-poc.db
+*.db
